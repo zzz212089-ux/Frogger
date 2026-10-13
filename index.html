@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Arcade Frogger 經典街機青蛙過街</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts 復古像素與街機字型 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    <!-- FontAwesome 圖標 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background: radial-gradient(circle at center, #111827 0%, #030712 100%);
+            min-height: 100vh;
+            color: #fff;
+            overflow-x: hidden;
+        }
+        .arcade-font {
+            font-family: 'Press Start 2P', cursive;
+        }
+        .retro-font {
+            font-family: 'VT323', monospace;
+        }
+        /* 街機外框霓虹與漸層 */
+        .arcade-cabinet {
+            box-shadow: 0 0 25px rgba(34, 197, 94, 0.35), inset 0 0 15px rgba(0, 0, 0, 0.8);
+            border: 4px solid #1f2937;
+        }
+        /* CRT 掃描線效果 */
+        .crt::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.35) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
+            z-index: 20;
+            background-size: 100% 3px, 6px 100%;
+            pointer-events: none;
+        }
+        /* 虛擬手把按鈕特效 */
+        .dpad-btn {
+            background: linear-gradient(145deg, #374151, #1f2937);
+            box-shadow: 3px 3px 6px #111827, -2px -2px 5px #4b5563;
+            transition: all 0.08s ease;
+        }
+        .dpad-btn:active {
+            transform: scale(0.92);
+            box-shadow: inset 2px 2px 5px #111827;
+            background: #10b981;
+            color: #000;
+        }
+        /* 脈衝閃爍特效 */
+        @keyframes pulse-fast {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .flash {
+            animation: pulse-fast 0.6s infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-start p-2 sm:p-4 selection:bg-green-500 selection:text-black">
+
+    <!-- 遊戲外層容器 -->
+    <div class="w-full max-w-2xl flex flex-col items-center">
+        <!-- 標題與街機標誌 -->
+        <header class="w-full flex items-center justify-between py-2 px-3 border-b-2 border-green-600 mb-2">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-frog text-green-400 text-xl sm:text-2xl animate-bounce"></i>
+                <h1 class="text-sm sm:text-lg text-green-400 tracking-wider">FROGGER '81</h1>
+            </div>
+            <!-- 控制選項（靜音、CRT濾鏡、說明） -->
+            <div class="flex items-center gap-3">
+                <button id="crtToggleBtn" title="切換 CRT 濾鏡" class="text-xs bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/50 px-2 py-1.5 rounded transition">
+                    <i class="fa-solid fa-tv"></i> <span class="hidden sm:inline">CRT</span>
+                </button>
+                <button id="soundToggleBtn" title="音效開關" class="text-xs bg-gray-800 hover:bg-gray-700 text-yellow-400 border border-yellow-500/50 px-2 py-1.5 rounded transition">
+                    <i class="fa-solid fa-volume-high" id="soundIcon"></i>
+                </button>
+                <button id="helpBtn" title="說明" class="text-xs bg-gray-800 hover:bg-gray-700 text-blue-400 border border-blue-500/50 px-2 py-1.5 rounded transition">
+                    <i class="fa-solid fa-question"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- 計分板與關卡狀態 -->
+        <div class="w-full grid grid-cols-3 gap-2 text-center text-[10px] sm:text-xs mb-2 bg-black/60 p-2 rounded-lg border border-gray-800">
+            <div>
+                <div class="text-red-500 tracking-widest">1-UP</div>
+                <div id="scoreDisplay" class="text-white text-xs sm:text-sm mt-1">00000</div>
+            </div>
+            <div>
+                <div class="text-red-500 tracking-widest">HI-SCORE</div>
+                <div id="highScoreDisplay" class="text-yellow-400 text-xs sm:text-sm mt-1">00000</div>
+            </div>
+            <div>
+                <div class="text-blue-400 tracking-widest">LEVEL</div>
+                <div id="levelDisplay" class="text-green-400 text-xs sm:text-sm mt-1">1</div>
+            </div>
+        </div>
+
+        <!-- 街機螢幕外框與 Canvas -->
+        <div class="relative w-full aspect-[14/15] max-h-[70vh] bg-black rounded-lg overflow-hidden arcade-cabinet crt" id="screenContainer">
+            <canvas id="gameCanvas" class="w-full h-full block bg-black"></canvas>
+
+            <!-- 暫停 / 遊戲開始 / 結束提示覆蓋層 -->
+            <div id="overlayScreen" class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center p-6 text-center z-30 transition-opacity duration-200">
+                <div id="overlayContent" class="space-y-4 max-w-md">
+                    <div class="text-3xl text-green-400 font-bold mb-2 tracking-widest" id="overlayTitle">FROGGER</div>
+                    <p class="text-xs sm:text-sm text-gray-300 leading-relaxed retro-font text-lg" id="overlayMessage">
+                        穿越繁忙公路、橫渡湍急河流，安全抵達對岸蓮花山洞！
+                    </p>
+                    <div class="py-2">
+                        <button id="primaryBtn" class="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-black font-black text-xs sm:text-sm tracking-wider rounded-lg shadow-lg shadow-green-500/50 active:scale-95 transition cursor-pointer">
+                            INSERT COIN (開始)
+                        </button>
+                    </div>
+                    <div class="text-[10px] text-gray-500">支援鍵盤 [W/A/S/D] 或 [方向鍵] 移動</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部資訊條：生命值與倒數計時進度條 -->
+        <div class="w-full flex items-center justify-between px-3 py-2 bg-gray-950 border border-gray-800 rounded-b-lg text-xs mt-1">
+            <!-- 剩餘生命圖標 -->
+            <div class="flex items-center gap-1.5" id="livesContainer">
+                <span class="text-gray-400 text-[10px] mr-1">LIVES:</span>
+                <i class="fa-solid fa-frog text-green-400 text-sm"></i>
+                <i class="fa-solid fa-frog text-green-400 text-sm"></i>
+                <i class="fa-solid fa-frog text-green-400 text-sm"></i>
+            </div>
+
+            <!-- 時間倒數條 -->
+            <div class="flex items-center gap-2 flex-1 max-w-[200px] sm:max-w-xs ml-4">
+                <span class="text-red-500 text-[10px] tracking-wider font-bold">TIME</span>
+                <div class="w-full h-3 bg-gray-900 border border-gray-700 rounded-full overflow-hidden p-[1px]">
+                    <div id="timeProgressBar" class="h-full bg-gradient-to-r from-green-500 via-yellow-400 to-red-500 w-full transition-all duration-100 rounded-full"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 行動裝置虛擬按鍵 (D-Pad) -->
+        <div class="w-full max-w-xs flex flex-col items-center mt-3 select-none">
+            <div class="grid grid-cols-3 gap-2 w-48 h-36">
+                <div></div>
+                <button id="btnUp" class="dpad-btn rounded-xl flex items-center justify-center text-xl text-green-400 active:bg-green-500 active:text-black">
+                    <i class="fa-solid fa-chevron-up"></i>
+                </button>
+                <div></div>
+                <button id="btnLeft" class="dpad-btn rounded-xl flex items-center justify-center text-xl text-green-400 active:bg-green-500 active:text-black">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <div class="flex items-center justify-center">
+                    <div class="w-3 h-3 rounded-full bg-green-500/20"></div>
+                </div>
+                <button id="btnRight" class="dpad-btn rounded-xl flex items-center justify-center text-xl text-green-400 active:bg-green-500 active:text-black">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                <div></div>
+                <button id="btnDown" class="dpad-btn rounded-xl flex items-center justify-center text-xl text-green-400 active:bg-green-500 active:text-black">
+                    <i class="fa-solid fa-chevron-down"></i>
+                </button>
+                <div></div>
+            </div>
+        </div>
+
+        <!-- 遊戲說明彈窗 -->
+        <div id="helpModal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div class="bg-gray-900 border-2 border-green-500 p-5 rounded-xl max-w-sm w-full text-center space-y-3">
+                <h3 class="text-green-400 text-sm font-bold">遊戲規則說明</h3>
+                <div class="text-left text-[11px] text-gray-300 space-y-2 leading-relaxed">
+                    <p>🟢 <b>目標：</b>操控青蛙將 5 個山洞全部填滿以通過關卡！</p>
+                    <p>🚗 <b>公路區：</b>避開不同速度與長度的各型車輛，被撞擊即失去一命。</p>
+                    <p>🪵 <b>河流區：</b>跳上浮木或明亮海龜浮台上。隨平台漂出邊界或落水會失去一命。</p>
+                    <p>🐢 <b>穩定浮力：</b>河道上海龜浮台保持穩定浮起，可安心立足移動！</p>
+                    <p>🪰 <b>獎勵：</b>山洞隨機出現蒼蠅可額外獲取 200 分！</p>
+                </div>
+                <button id="closeHelpBtn" class="mt-2 w-full py-2 bg-green-600 hover:bg-green-500 text-black font-bold rounded-lg text-xs cursor-pointer">
+                    明白！
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 完整的 Web Audio 8-bit 合成音效引擎
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                try {
+                    if (!this.ctx) {
+                        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                        if (AudioContextClass) {
+                            this.ctx = new AudioContextClass();
+                        }
+                    }
+                    if (this.ctx && this.ctx.state === 'suspended') {
+                        this.ctx.resume();
+                    }
+                } catch (e) {
+                    console.warn('Audio Context initialization error:', e);
+                }
+            }
+
+            playHop() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(320, now);
+                    osc.frequency.exponentialRampToValueAtTime(620, now + 0.07);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.07);
+                } catch (e) {}
+            }
+
+            playPlunk() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(240, now);
+                    osc.frequency.linearRampToValueAtTime(80, now + 0.18);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.18);
+                } catch (e) {}
+            }
+
+            playSquash() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(140, now);
+                    osc.frequency.linearRampToValueAtTime(40, now + 0.22);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.22);
+                } catch (e) {}
+            }
+
+            playHome() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const notes = [440, 554, 659];
+                    notes.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'square';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+                        gain.gain.setValueAtTime(0.1, now + idx * 0.06);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.1);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.06);
+                        osc.stop(now + idx * 0.06 + 0.1);
+                    });
+                } catch (e) {}
+            }
+
+            playBonus() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const notes = [523, 659, 783, 1046];
+                    notes.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+                        gain.gain.setValueAtTime(0.12, now + idx * 0.05);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.08);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.05);
+                        osc.stop(now + idx * 0.05 + 0.08);
+                    });
+                } catch (e) {}
+            }
+
+            playLevelClear() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const melody = [523, 659, 783, 1046, 783, 1046];
+                    melody.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'square';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                        gain.gain.setValueAtTime(0.14, now + idx * 0.1);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.12);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.1);
+                        osc.stop(now + idx * 0.1 + 0.12);
+                    });
+                } catch (e) {}
+            }
+
+            playGameOver() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const notes = [330, 311, 293, 277];
+                    notes.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'sawtooth';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.14);
+                        gain.gain.setValueAtTime(0.15, now + idx * 0.14);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.14 + 0.16);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.14);
+                        osc.stop(now + idx * 0.14 + 0.16);
+                    });
+                } catch (e) {}
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        // 經典街機規格配置：14 列 (columns) x 15 行 (rows)
+        const COLS = 14;
+        const ROWS = 15;
+        const INTERNAL_WIDTH = 560; // 內部渲染基準寬度
+        const INTERNAL_HEIGHT = 600; // 內部渲染基準高度
+        const CELL_SIZE = INTERNAL_WIDTH / COLS; // 40px
+
+        // 原版經典 5 個終點山洞槽位
+        const HOME_SLOTS = [
+            { col: 1.0, filled: false, hasFly: false },
+            { col: 3.8, filled: false, hasFly: false },
+            { col: 6.7, filled: false, hasFly: false },
+            { col: 9.5, filled: false, hasFly: false },
+            { col: 12.3, filled: false, hasFly: false }
+        ];
+
+        class Frog {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.col = 6.5; // 水平置中
+                this.row = 13;   // 起始草地
+                this.x = this.col * CELL_SIZE;
+                this.y = this.row * CELL_SIZE;
+                this.targetX = this.x;
+                this.targetY = this.y;
+                this.dir = 'UP';
+                this.isJumping = false;
+                this.jumpProgress = 0;
+                this.isDead = false;
+                this.deathType = null;
+                this.deathTimer = 0;
+            }
+
+            move(dCol, dRow, newDir) {
+                if (this.isDead || game.state !== 'PLAYING') return;
+
+                const nextCol = this.col + dCol;
+                const nextRow = this.row + dRow;
+
+                // 邊界防護
+                if (nextCol < 0 || nextCol >= COLS) return;
+                if (nextRow > 13) return;
+                if (nextRow < 1) return;
+
+                this.dir = newDir;
+                this.col = nextCol;
+                this.row = nextRow;
+                this.targetX = this.col * CELL_SIZE;
+                this.targetY = this.row * CELL_SIZE;
+                this.isJumping = true;
+                this.jumpProgress = 0;
+
+                sound.playHop();
+
+                // 向上跳一步得 10 分
+                if (dRow < 0) {
+                    game.addScore(10);
+                }
+            }
+
+            update(deltaTime) {
+                if (this.isDead) {
+                    this.deathTimer += deltaTime;
+                    return;
+                }
+
+                if (this.isJumping) {
+                    this.jumpProgress += deltaTime * 12;
+                    if (this.jumpProgress >= 1) {
+                        this.jumpProgress = 1;
+                        this.isJumping = false;
+                        this.x = this.targetX;
+                        this.y = this.targetY;
+                    } else {
+                        this.x += (this.targetX - this.x) * 0.45;
+                        this.y += (this.targetY - this.y) * 0.45;
+                    }
+                } else {
+                    this.x = this.targetX;
+                    this.y = this.targetY;
+                }
+            }
+
+            die(type) {
+                if (this.isDead) return;
+                this.isDead = true;
+                this.deathType = type;
+                this.deathTimer = 0;
+                if (type === 'squash') {
+                    sound.playSquash();
+                } else {
+                    sound.playPlunk();
+                }
+                game.onFrogDeath();
+            }
+        }
+
+        class Obstacle {
+            constructor(row, x, width, speed, type, extra = {}) {
+                this.row = row;
+                this.x = x;
+                this.y = row * CELL_SIZE;
+                this.width = width;
+                this.height = CELL_SIZE - 4;
+                this.speed = speed;
+                this.type = type;
+                this.extra = extra;
+                this.submerged = false; // 保持浮起，不下沉致死
+            }
+
+            update(deltaTime, levelSpeedMultiplier) {
+                this.x += this.speed * levelSpeedMultiplier * deltaTime;
+
+                if (this.speed > 0 && this.x > INTERNAL_WIDTH + 80) {
+                    this.x = -this.width - 20;
+                } else if (this.speed < 0 && this.x < -this.width - 80) {
+                    this.x = INTERNAL_WIDTH + 20;
+                }
+
+                this.submerged = false;
+            }
+        }
+
+        class LaneManager {
+            constructor() {
+                this.lanes = [];
+                this.initLanes();
+            }
+
+            initLanes() {
+                this.lanes = [];
+
+                // === 河流區 (Row 2 - 6) ===
+                // Row 2: 巨型浮木
+                this.createLane(2, 60, 160, 3, 'log', { color: '#8b4513' });
+                // Row 3: 三隻一組海龜群 (穩定浮力)
+                this.createTurtleLane(3, -75, 3, 4);
+                // Row 4: 極長巨木
+                this.createLane(4, 110, 210, 2, 'log', { color: '#654321' });
+                // Row 5: 小型浮木
+                this.createLane(5, 50, 95, 3, 'log', { color: '#8b4513' });
+                // Row 6: 雙隻一組海龜群 (穩定浮力)
+                this.createTurtleLane(6, -85, 2, 4);
+
+                // === 公路區 (Row 8 - 12) ===
+                // Row 8: 紅色超跑
+                this.createRoadLane(8, -130, 50, 3, 'racer', '#ef4444');
+                // Row 9: 重型泥頭卡車
+                this.createRoadLane(9, 70, 85, 2, 'truck', '#f59e0b');
+                // Row 10: 紫色街車
+                this.createRoadLane(10, -90, 48, 3, 'car2', '#a855f7');
+                // Row 11: 拖車推土機
+                this.createRoadLane(11, 55, 60, 3, 'tractor', '#eab308');
+                // Row 12: 計程車藍車
+                this.createRoadLane(12, -80, 46, 3, 'car1', '#3b82f6');
+            }
+
+            createLane(row, speed, width, count, type, extra = {}) {
+                const spacing = INTERNAL_WIDTH / count;
+                for (let i = 0; i < count; i++) {
+                    const x = i * spacing + (Math.random() * 20);
+                    this.lanes.push(new Obstacle(row, x, width, speed, type, extra));
+                }
+            }
+
+            createTurtleLane(row, speed, turtleCountPerGroup, groupCount) {
+                const groupWidth = turtleCountPerGroup * 36;
+                const spacing = (INTERNAL_WIDTH + 100) / groupCount;
+                for (let i = 0; i < groupCount; i++) {
+                    const x = i * spacing;
+                    this.lanes.push(new Obstacle(row, x, groupWidth, speed, 'turtle', {
+                        turtlesInGroup: turtleCountPerGroup
+                    }));
+                }
+            }
+
+            createRoadLane(row, speed, width, count, type, color) {
+                const spacing = (INTERNAL_WIDTH + 60) / count;
+                for (let i = 0; i < count; i++) {
+                    const x = i * spacing + (i * 25);
+                    this.lanes.push(new Obstacle(row, x, width, speed, type, { color: color }));
+                }
+            }
+
+            update(deltaTime, levelMultiplier) {
+                this.lanes.forEach(obs => obs.update(deltaTime, levelMultiplier));
+            }
+        }
+
+        class Renderer {
+            constructor(ctx) {
+                this.ctx = ctx;
+            }
+
+            drawBackground() {
+                const ctx = this.ctx;
+
+                // 頂部背景
+                ctx.fillStyle = '#0a0f1d';
+                ctx.fillRect(0, 0, INTERNAL_WIDTH, CELL_SIZE * 2);
+
+                // 河流背景 (Row 2 - 6)
+                ctx.fillStyle = '#1e3a8a';
+                ctx.fillRect(0, CELL_SIZE * 2, INTERNAL_WIDTH, CELL_SIZE * 5);
+
+                // 微弱水波
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 1.5;
+                const time = Date.now() * 0.003;
+                for (let r = 2; r < 7; r++) {
+                    const offset = (Math.sin(time + r) * 10);
+                    ctx.beginPath();
+                    ctx.moveTo(offset, r * CELL_SIZE + CELL_SIZE * 0.5);
+                    ctx.lineTo(INTERNAL_WIDTH + offset, r * CELL_SIZE + CELL_SIZE * 0.5);
+                    ctx.setLineDash([12, 24]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // 中間安全分隔草地 (Row 7)
+                ctx.fillStyle = '#14532d';
+                ctx.fillRect(0, CELL_SIZE * 7, INTERNAL_WIDTH, CELL_SIZE);
+                ctx.fillStyle = '#16a34a';
+                for (let x = 0; x < INTERNAL_WIDTH; x += 16) {
+                    ctx.fillRect(x + 2, CELL_SIZE * 7 + 4, 3, 10);
+                    ctx.fillRect(x + 8, CELL_SIZE * 7 + 14, 3, 8);
+                }
+
+                // 公路道路 (Row 8 - 12)
+                ctx.fillStyle = '#111827';
+                ctx.fillRect(0, CELL_SIZE * 8, INTERNAL_WIDTH, CELL_SIZE * 5);
+
+                // 車道白色虛線
+                ctx.strokeStyle = '#9ca3af';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([14, 16]);
+                for (let r = 9; r < 13; r++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, r * CELL_SIZE);
+                    ctx.lineTo(INTERNAL_WIDTH, r * CELL_SIZE);
+                    ctx.stroke();
+                }
+                ctx.setLineDash([]);
+
+                // 起始草地 (Row 13)
+                ctx.fillStyle = '#14532d';
+                ctx.fillRect(0, CELL_SIZE * 13, INTERNAL_WIDTH, CELL_SIZE);
+                ctx.fillStyle = '#16a34a';
+                for (let x = 0; x < INTERNAL_WIDTH; x += 16) {
+                    ctx.fillRect(x + 3, CELL_SIZE * 13 + 6, 3, 10);
+                    ctx.fillRect(x + 10, CELL_SIZE * 13 + 12, 3, 8);
+                }
+
+                // 頂部經典 5 個原版半橢圓拱門山洞
+                this.drawHomeBays();
+            }
+
+            drawHomeBays() {
+                const ctx = this.ctx;
+                // 草綠色岸壁底色
+                ctx.fillStyle = '#15803d';
+                ctx.fillRect(0, CELL_SIZE * 1, INTERNAL_WIDTH, CELL_SIZE);
+
+                // 草叢紋理點綴
+                ctx.fillStyle = '#16a34a';
+                for (let x = 0; x < INTERNAL_WIDTH; x += 14) {
+                    ctx.fillRect(x + 2, CELL_SIZE * 1 + 2, 3, 6);
+                }
+
+                // 5 個經典半橢圓拱門山洞
+                HOME_SLOTS.forEach((slot) => {
+                    const slotX = slot.col * CELL_SIZE;
+                    const slotW = CELL_SIZE * 1.25;
+                    const centerX = slotX + slotW / 2;
+                    const bottomY = CELL_SIZE * 2;
+                    const rx = slotW / 2;
+                    const ry = CELL_SIZE * 0.95;
+
+                    // 繪製半橢圓拱門洞口 (深藍黑洞口)
+                    ctx.save();
+                    ctx.beginPath();
+                    // 底部左側 -> 上方半橢圓弧 -> 底部右側閉合
+                    ctx.ellipse(centerX, bottomY, rx, ry, 0, Math.PI, 0, false);
+                    ctx.lineTo(centerX + rx, bottomY);
+                    ctx.lineTo(centerX - rx, bottomY);
+                    ctx.closePath();
+
+                    ctx.fillStyle = '#061325';
+                    ctx.fill();
+
+                    // 山洞邊框 (深綠草叢輪廓線)
+                    ctx.strokeStyle = '#052e16';
+                    ctx.lineWidth = 3.5;
+                    ctx.stroke();
+
+                    // 山洞上方岩石/草蔭陰影弧形
+                    ctx.strokeStyle = '#041d0e';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(centerX, bottomY, rx - 3, ry - 3, 0, Math.PI, 0, false);
+                    ctx.stroke();
+
+                    ctx.restore();
+
+                    const frogCenterY = CELL_SIZE * 1.5;
+
+                    if (slot.filled) {
+                        this.drawMiniFrog(centerX, frogCenterY);
+                    } else if (slot.hasFly) {
+                        this.drawFly(centerX, frogCenterY);
+                    }
+                });
+            }
+
+            drawFly(x, y) {
+                const ctx = this.ctx;
+                ctx.save();
+                ctx.translate(x, y);
+                const wingFlap = Math.sin(Date.now() * 0.03) * 3;
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.ellipse(-4, -4 + wingFlap, 5, 2, -Math.PI / 4, 0, Math.PI * 2);
+                ctx.ellipse(4, -4 + wingFlap, 5, 2, Math.PI / 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#eab308';
+                ctx.beginPath();
+                ctx.arc(0, 0, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            drawMiniFrog(x, y) {
+                const ctx = this.ctx;
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(-5, -5, 3, 0, Math.PI * 2);
+                ctx.arc(5, -5, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(-5, -5, 1.5, 0, Math.PI * 2);
+                ctx.arc(5, -5, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            drawObstacles(obstacles) {
+                const ctx = this.ctx;
+
+                obstacles.forEach(obs => {
+                    const y = obs.y + 2;
+
+                    if (obs.type === 'log') {
+                        // 浮木木紋
+                        ctx.fillStyle = obs.extra.color || '#8b4513';
+                        ctx.beginPath();
+                        ctx.roundRect(obs.x, y, obs.width, obs.height, 8);
+                        ctx.fill();
+                        ctx.strokeStyle = '#5c2c16';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+
+                        ctx.fillStyle = '#a25e2e';
+                        ctx.fillRect(obs.x + 8, y + 4, obs.width - 16, 4);
+                        ctx.fillRect(obs.x + 12, y + obs.height - 8, obs.width - 24, 3);
+                    } else if (obs.type === 'turtle') {
+                        // 原版海龜圖示（明亮清新、高辨識度）
+                        const count = obs.extra.turtlesInGroup || 2;
+                        for (let i = 0; i < count; i++) {
+                            const tx = obs.x + i * 36;
+                            const cx = tx + 18;
+                            const cy = y + obs.height / 2;
+
+                            // 水花微光
+                            ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
+                            ctx.beginPath();
+                            ctx.ellipse(cx, cy, 18, 15, 0, 0, Math.PI * 2);
+                            ctx.fill();
+
+                            // 海龜甲殼主體
+                            ctx.fillStyle = '#10b981';
+                            ctx.beginPath();
+                            ctx.ellipse(cx, cy, 15, 12, 0, 0, Math.PI * 2);
+                            ctx.fill();
+
+                            ctx.strokeStyle = '#047857';
+                            ctx.lineWidth = 2;
+                            ctx.stroke();
+
+                            // 龜甲亮綠斑紋
+                            ctx.fillStyle = '#34d399';
+                            ctx.beginPath();
+                            ctx.ellipse(cx, cy, 9, 7, 0, 0, Math.PI * 2);
+                            ctx.fill();
+
+                            // 龜甲十字高光
+                            ctx.strokeStyle = '#a7f3d0';
+                            ctx.lineWidth = 1.5;
+                            ctx.beginPath();
+                            ctx.moveTo(cx - 9, cy);
+                            ctx.lineTo(cx + 9, cy);
+                            ctx.moveTo(cx, cy - 7);
+                            ctx.lineTo(cx, cy + 7);
+                            ctx.stroke();
+
+                            // 鰭肢
+                            ctx.fillStyle = '#059669';
+                            ctx.beginPath();
+                            ctx.ellipse(cx - 11, cy - 8, 4, 3, -0.4, 0, Math.PI * 2);
+                            ctx.ellipse(cx + 11, cy - 8, 4, 3, 0.4, 0, Math.PI * 2);
+                            ctx.ellipse(cx - 10, cy + 8, 3, 3, 0.4, 0, Math.PI * 2);
+                            ctx.ellipse(cx + 10, cy + 8, 3, 3, -0.4, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    } else {
+                        // 車輛繪製
+                        this.drawVehicle(obs);
+                    }
+                });
+            }
+
+            drawVehicle(obs) {
+                const ctx = this.ctx;
+                const x = obs.x;
+                const y = obs.y + 3;
+                const w = obs.width;
+                const h = obs.height - 2;
+                const color = obs.extra.color || '#3b82f6';
+                const isHeadingRight = obs.speed > 0;
+
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.roundRect(x, y, w, h, 5);
+                ctx.fill();
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                ctx.fillStyle = '#0f172a';
+                const cabinW = w * 0.45;
+                const cabinX = isHeadingRight ? x + w * 0.25 : x + w * 0.3;
+                ctx.fillRect(cabinX, y + 3, cabinW, h - 6);
+
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillRect(cabinX + 2, y + 5, cabinW - 4, 3);
+
+                if (isHeadingRight) {
+                    ctx.fillStyle = '#fef08a';
+                    ctx.fillRect(x + w - 3, y + 2, 3, 4);
+                    ctx.fillRect(x + w - 3, y + h - 6, 3, 4);
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillRect(x, y + 2, 2, 4);
+                    ctx.fillRect(x, y + h - 6, 2, 4);
+                } else {
+                    ctx.fillStyle = '#fef08a';
+                    ctx.fillRect(x, y + 2, 3, 4);
+                    ctx.fillRect(x, y + h - 6, 3, 4);
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillRect(x + w - 2, y + 2, 2, 4);
+                    ctx.fillRect(x + w - 2, y + h - 6, 2, 4);
+                }
+            }
+
+            drawFrog(frog) {
+                const ctx = this.ctx;
+                const cx = frog.x + CELL_SIZE / 2;
+                const cy = frog.y + CELL_SIZE / 2;
+
+                ctx.save();
+                ctx.translate(cx, cy);
+
+                if (frog.isDead) {
+                    if (frog.deathType === 'squash') {
+                        ctx.fillStyle = '#ef4444';
+                        ctx.beginPath();
+                        ctx.ellipse(0, 0, 16, 8, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = '10px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText('✕', 0, 0);
+                    } else {
+                        const r = Math.min(22, (frog.deathTimer * 30));
+                        ctx.strokeStyle = '#60a5fa';
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, r, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.fillStyle = '#93c5fd';
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                    return;
+                }
+
+                let scaleX = 1;
+                let scaleY = 1;
+                if (frog.isJumping) {
+                    const jumpPhase = Math.sin(frog.jumpProgress * Math.PI);
+                    scaleY = 1 + jumpPhase * 0.35;
+                    scaleX = 1 - jumpPhase * 0.2;
+                }
+
+                if (frog.dir === 'DOWN') ctx.rotate(Math.PI);
+                else if (frog.dir === 'LEFT') ctx.rotate(-Math.PI / 2);
+                else if (frog.dir === 'RIGHT') ctx.rotate(Math.PI / 2);
+
+                ctx.scale(scaleX, scaleY);
+
+                // 青蛙本體
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.ellipse(0, 2, 12, 14, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 腹部淡黃斑紋
+                ctx.fillStyle = '#bbf7d0';
+                ctx.beginPath();
+                ctx.ellipse(0, 3, 6, 9, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 四肢
+                ctx.fillStyle = '#16a34a';
+                const legSpread = frog.isJumping ? 16 : 11;
+                ctx.beginPath();
+                ctx.ellipse(-legSpread, 8, 4, 8, -Math.PI / 4, 0, Math.PI * 2);
+                ctx.ellipse(legSpread, 8, 4, 8, Math.PI / 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.ellipse(-10, -8, 3, 5, Math.PI / 6, 0, Math.PI * 2);
+                ctx.ellipse(10, -8, 3, 5, -Math.PI / 6, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 眼睛
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(-7, -10, 4.5, 0, Math.PI * 2);
+                ctx.arc(7, -10, 4.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(-7, -11, 2, 0, Math.PI * 2);
+                ctx.arc(7, -11, 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        class GameEngine {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.renderer = new Renderer(this.ctx);
+                this.frog = new Frog();
+                this.laneManager = new LaneManager();
+
+                this.score = 0;
+                this.highScore = 0;
+                try {
+                    this.highScore = parseInt(sessionStorage.getItem('frogger_high_score') || '0', 10);
+                } catch(e) {}
+
+                this.level = 1;
+                this.lives = 3;
+                this.timeLimit = 35;
+                this.timer = this.timeLimit;
+                this.state = 'START';
+                this.lastFrameTime = performance.now();
+
+                this.bonusFlyTimer = 0;
+
+                this.initCanvasSize();
+                window.addEventListener('resize', () => this.initCanvasSize());
+            }
+
+            initCanvasSize() {
+                this.canvas.width = INTERNAL_WIDTH;
+                this.canvas.height = INTERNAL_HEIGHT;
+            }
+
+            startNewGame() {
+                sound.init();
+                this.score = 0;
+                this.level = 1;
+                this.lives = 3;
+                this.resetHomeSlots();
+                this.laneManager.initLanes();
+                this.resetRound();
+                this.state = 'PLAYING';
+                this.updateUI();
+
+                const overlay = document.getElementById('overlayScreen');
+                if (overlay) overlay.classList.add('hidden');
+            }
+
+            resetRound() {
+                this.timer = this.timeLimit;
+                this.frog.reset();
+                this.laneManager.update(0.01, 1);
+            }
+
+            resetHomeSlots() {
+                HOME_SLOTS.forEach(slot => {
+                    slot.filled = false;
+                    slot.hasFly = false;
+                });
+            }
+
+            addScore(pts) {
+                this.score += pts;
+                if (this.score > this.highScore) {
+                    this.highScore = this.score;
+                    try {
+                        sessionStorage.setItem('frogger_high_score', this.highScore);
+                    } catch(e) {}
+                }
+                this.updateUI();
+            }
+
+            onFrogDeath() {
+                setTimeout(() => {
+                    this.lives--;
+                    this.updateUI();
+
+                    if (this.lives <= 0) {
+                        this.state = 'GAMEOVER';
+                        sound.playGameOver();
+                        this.showGameOverScreen();
+                    } else {
+                        this.resetRound();
+                    }
+                }, 850);
+            }
+
+            checkCollisions(deltaTime) {
+                const frog = this.frog;
+                if (frog.isDead || this.state !== 'PLAYING') return;
+
+                if (frog.isJumping && frog.jumpProgress < 0.7) {
+                    return;
+                }
+
+                const fRow = frog.row;
+                const fx = frog.x + CELL_SIZE * 0.15;
+                const fw = CELL_SIZE * 0.7;
+                const fy = frog.y + CELL_SIZE * 0.15;
+                const fh = CELL_SIZE * 0.7;
+                const frogCenterX = frog.x + CELL_SIZE * 0.5;
+
+                // === 頂部經典 5 個山洞判定 (Row 1) ===
+                if (fRow === 1) {
+                    let enteredSlot = null;
+                    HOME_SLOTS.forEach((slot, index) => {
+                        const slotX = slot.col * CELL_SIZE;
+                        const slotW = CELL_SIZE * 1.25;
+                        if (frogCenterX >= slotX - 10 && frogCenterX <= slotX + slotW + 10) {
+                            enteredSlot = { slot, index, slotX, slotW };
+                        }
+                    });
+
+                    if (enteredSlot) {
+                        if (!enteredSlot.slot.filled) {
+                            enteredSlot.slot.filled = true;
+                            frog.x = enteredSlot.slotX + (enteredSlot.slotW - CELL_SIZE) / 2;
+                            frog.targetX = frog.x;
+                            frog.col = frog.x / CELL_SIZE;
+
+                            let pts = 50 + Math.floor(this.timer) * 10;
+
+                            if (enteredSlot.slot.hasFly) {
+                                pts += 200;
+                                sound.playBonus();
+                                enteredSlot.slot.hasFly = false;
+                            } else {
+                                sound.playHome();
+                            }
+
+                            this.addScore(pts);
+
+                            const allFilled = HOME_SLOTS.every(s => s.filled);
+                            if (allFilled) {
+                                this.onLevelClear();
+                            } else {
+                                this.resetRound();
+                            }
+                            return;
+                        } else {
+                            frog.die('squash');
+                            return;
+                        }
+                    } else {
+                        // 撞上山洞邊緣壁
+                        frog.die('squash');
+                        return;
+                    }
+                }
+
+                // === 公路區 (Row 8 - 12) ===
+                if (fRow >= 8 && fRow <= 12) {
+                    for (const obs of this.laneManager.lanes) {
+                        if (obs.row === fRow) {
+                            if (fx < obs.x + obs.width &&
+                                fx + fw > obs.x &&
+                                fy < obs.y + obs.height &&
+                                fy + fh > obs.y) {
+                                frog.die('squash');
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // === 河流區 (Row 2 - 6) ===
+                if (fRow >= 2 && fRow <= 6) {
+                    let ridingObstacle = null;
+                    const tolerance = 15; // 寬容度，確保不會踏偏落水
+
+                    for (const obs of this.laneManager.lanes) {
+                        if (obs.row === fRow) {
+                            if (frogCenterX >= obs.x - tolerance && frogCenterX <= obs.x + obs.width + tolerance) {
+                                ridingObstacle = obs;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (ridingObstacle) {
+                        // 穩定隨浮木或海龜漂移，不下沉
+                        const drift = ridingObstacle.speed * (1 + (this.level - 1) * 0.15) * deltaTime;
+                        frog.x += drift;
+                        frog.targetX += drift;
+                        frog.col = frog.x / CELL_SIZE;
+
+                        // 漂出螢幕邊界死亡
+                        if (frog.x < -CELL_SIZE * 0.85 || frog.x > INTERNAL_WIDTH - CELL_SIZE * 0.15) {
+                            frog.die('drown');
+                            return;
+                        }
+                    } else {
+                        // 真正落水溺斃
+                        frog.die('drown');
+                        return;
+                    }
+                }
+            }
+
+            onLevelClear() {
+                this.state = 'LEVEL_CLEAR';
+                this.addScore(1000);
+                sound.playLevelClear();
+
+                const overlay = document.getElementById('overlayScreen');
+                const title = document.getElementById('overlayTitle');
+                const msg = document.getElementById('overlayMessage');
+                const btn = document.getElementById('primaryBtn');
+
+                title.textContent = `LEVEL ${this.level} CLEAR!`;
+                title.className = "text-2xl sm:text-3xl text-yellow-400 font-bold mb-2 tracking-widest flash";
+                msg.textContent = `恭喜過關！獲得 1000 點獎勵！即將進入第 ${this.level + 1} 關！`;
+                btn.textContent = "繼續下一關";
+                overlay.style.opacity = '1';
+                overlay.style.pointerEvents = 'auto';
+                overlay.classList.remove('hidden');
+
+                setTimeout(() => {
+                    this.level++;
+                    this.resetHomeSlots();
+                    this.resetRound();
+                    this.state = 'PLAYING';
+                    overlay.classList.add('hidden');
+                    this.updateUI();
+                }, 2200);
+            }
+
+            showGameOverScreen() {
+                const overlay = document.getElementById('overlayScreen');
+                const title = document.getElementById('overlayTitle');
+                const msg = document.getElementById('overlayMessage');
+                const btn = document.getElementById('primaryBtn');
+
+                title.textContent = "GAME OVER";
+                title.className = "text-3xl text-red-500 font-bold mb-2 tracking-widest";
+                msg.textContent = `最終得分: ${this.score} 分！感謝遊玩！`;
+                btn.textContent = "TRY AGAIN (再來一局)";
+                overlay.classList.remove('hidden');
+                overlay.style.opacity = '1';
+                overlay.style.pointerEvents = 'auto';
+            }
+
+            updateFlySpawner(deltaTime) {
+                this.bonusFlyTimer += deltaTime;
+                if (this.bonusFlyTimer > 8) {
+                    this.bonusFlyTimer = 0;
+                    HOME_SLOTS.forEach(s => s.hasFly = false);
+
+                    const emptySlots = HOME_SLOTS.map((s, idx) => (!s.filled ? idx : -1)).filter(idx => idx !== -1);
+                    if (emptySlots.length > 0 && Math.random() < 0.6) {
+                        const randomIdx = emptySlots[Math.floor(Math.random() * emptySlots.length)];
+                        HOME_SLOTS[randomIdx].hasFly = true;
+                    }
+                }
+            }
+
+            update(currentTime) {
+                const deltaTime = Math.min((currentTime - this.lastFrameTime) / 1000, 0.1);
+                this.lastFrameTime = currentTime;
+
+                if (this.state === 'PLAYING') {
+                    this.timer -= deltaTime;
+                    if (this.timer <= 0) {
+                        this.timer = 0;
+                        this.frog.die('squash');
+                    }
+                    this.updateTimerBar();
+
+                    const levelMultiplier = 1 + (this.level - 1) * 0.15;
+                    this.laneManager.update(deltaTime, levelMultiplier);
+                    this.frog.update(deltaTime);
+                    this.checkCollisions(deltaTime);
+                    this.updateFlySpawner(deltaTime);
+                } else {
+                    this.laneManager.update(deltaTime, 1);
+                }
+
+                this.renderer.drawBackground();
+                this.renderer.drawObstacles(this.laneManager.lanes);
+                this.renderer.drawFrog(this.frog);
+
+                requestAnimationFrame((t) => this.update(t));
+            }
+
+            updateTimerBar() {
+                const bar = document.getElementById('timeProgressBar');
+                if (!bar) return;
+                const percent = Math.max(0, Math.min(100, (this.timer / this.timeLimit) * 100));
+                bar.style.width = `${percent}%`;
+            }
+
+            updateUI() {
+                document.getElementById('scoreDisplay').textContent = String(this.score).padStart(5, '0');
+                document.getElementById('highScoreDisplay').textContent = String(this.highScore).padStart(5, '0');
+                document.getElementById('levelDisplay').textContent = this.level;
+
+                const livesContainer = document.getElementById('livesContainer');
+                livesContainer.innerHTML = '<span class="text-gray-400 text-[10px] mr-1">LIVES:</span>';
+                for (let i = 0; i < this.lives; i++) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fa-solid fa-frog text-green-400 text-sm';
+                    livesContainer.appendChild(icon);
+                }
+            }
+        }
+
+        let game = null;
+
+        function initApp() {
+            if (game) return;
+            game = new GameEngine();
+            game.updateUI();
+            requestAnimationFrame((t) => game.update(t));
+
+            const primaryBtn = document.getElementById('primaryBtn');
+            const overlay = document.getElementById('overlayScreen');
+
+            const handleStart = (e) => {
+                if (e) e.preventDefault();
+                sound.init();
+                overlay.classList.add('hidden');
+                game.startNewGame();
+            };
+
+            primaryBtn.addEventListener('click', handleStart);
+            primaryBtn.addEventListener('touchstart', handleStart, { passive: false });
+
+            // 鍵盤移動操控
+            window.addEventListener('keydown', (e) => {
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                    e.preventDefault();
+                }
+
+                if (game.state !== 'PLAYING') {
+                    if (e.code === 'Space' || e.code === 'Enter') {
+                        handleStart();
+                    }
+                    return;
+                }
+
+                switch (e.key) {
+                    case 'ArrowUp':
+                    case 'w':
+                    case 'W':
+                        game.frog.move(0, -1, 'UP');
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                    case 'S':
+                        game.frog.move(0, 1, 'DOWN');
+                        break;
+                    case 'ArrowLeft':
+                    case 'a':
+                    case 'A':
+                        game.frog.move(-1, 0, 'LEFT');
+                        break;
+                    case 'ArrowRight':
+                    case 'd':
+                    case 'D':
+                        game.frog.move(1, 0, 'RIGHT');
+                        break;
+                }
+            });
+
+            // 虛擬 D-Pad 按鈕
+            const bindBtn = (id, dCol, dRow, dir) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                const handlePress = (e) => {
+                    e.preventDefault();
+                    sound.init();
+                    if (game.state === 'PLAYING') {
+                        game.frog.move(dCol, dRow, dir);
+                    }
+                };
+                btn.addEventListener('touchstart', handlePress, { passive: false });
+                btn.addEventListener('mousedown', handlePress);
+            };
+
+            bindBtn('btnUp', 0, -1, 'UP');
+            bindBtn('btnDown', 0, 1, 'DOWN');
+            bindBtn('btnLeft', -1, 0, 'LEFT');
+            bindBtn('btnRight', 1, 0, 'RIGHT');
+
+            // 畫布滑動手勢
+            let touchStartX = 0;
+            let touchStartY = 0;
+            const canvasElem = document.getElementById('gameCanvas');
+
+            canvasElem.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+            }, { passive: true });
+
+            canvasElem.addEventListener('touchend', (e) => {
+                if (game.state !== 'PLAYING') return;
+                const touch = e.changedTouches[0];
+                const dx = touch.clientX - touchStartX;
+                const dy = touch.clientY - touchStartY;
+                const absX = Math.abs(dx);
+                const absY = Math.abs(dy);
+
+                if (Math.max(absX, absY) > 25) {
+                    if (absX > absY) {
+                        if (dx > 0) game.frog.move(1, 0, 'RIGHT');
+                        else game.frog.move(-1, 0, 'LEFT');
+                    } else {
+                        if (dy > 0) game.frog.move(0, 1, 'DOWN');
+                        else game.frog.move(0, -1, 'UP');
+                    }
+                }
+            }, { passive: true });
+
+            // 音效開關切換
+            const soundBtn = document.getElementById('soundToggleBtn');
+            const soundIcon = document.getElementById('soundIcon');
+            soundBtn.addEventListener('click', () => {
+                sound.init();
+                sound.enabled = !sound.enabled;
+                if (sound.enabled) {
+                    soundIcon.className = 'fa-solid fa-volume-high';
+                    soundBtn.classList.replace('text-gray-500', 'text-yellow-400');
+                } else {
+                    soundIcon.className = 'fa-solid fa-volume-xmark';
+                    soundBtn.classList.replace('text-yellow-400', 'text-gray-500');
+                }
+            });
+
+            // CRT 濾鏡開關切換
+            const crtBtn = document.getElementById('crtToggleBtn');
+            const screenBox = document.getElementById('screenContainer');
+            crtBtn.addEventListener('click', () => {
+                screenBox.classList.toggle('crt');
+                crtBtn.classList.toggle('text-green-400');
+                crtBtn.classList.toggle('text-gray-500');
+            });
+
+            // 說明彈窗
+            const helpBtn = document.getElementById('helpBtn');
+            const helpModal = document.getElementById('helpModal');
+            const closeHelpBtn = document.getElementById('closeHelpBtn');
+            helpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
+            closeHelpBtn.addEventListener('click', () => helpModal.classList.add('hidden'));
+        }
+
+        window.addEventListener('DOMContentLoaded', initApp);
+        window.addEventListener('load', initApp);
+    </script>
+</body>
+</html>
