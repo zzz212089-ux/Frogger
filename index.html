@@ -1,6 +1,38 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+<!-- HAPPYCAT_SANDBOX_STORAGE_V1: Game scores only, not auth or private data. -->
+<script>
+(function () {
+  'use strict';
+  const kind = 'session';
+  const key = kind + 'Storage';
+  let seeded = {};
+  try {
+    const blob = new URLSearchParams(location.hash.slice(1)).get('happycat_scores');
+    if (blob && blob.length < 4096) {
+      const parsed = JSON.parse(atob(blob));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) seeded = parsed;
+    }
+  } catch (error) { /* Normal play works even without score restore. */ }
+  window.happycatSandboxStorage = {
+    getItem(name) {
+      const k = String(name);
+      try { return window[key].getItem(k); }
+      catch (error) { return Object.prototype.hasOwnProperty.call(seeded, k) ? String(seeded[k]) : null; }
+    },
+    setItem(name, value) {
+      const k = String(name), v = String(value);
+      try { window[key].setItem(k, v); }
+      catch (error) {
+        seeded[k] = v;
+        if (window.parent !== window) window.parent.postMessage({ type: 'happycat-score-v1', key: k, value: v }, '*');
+      }
+    }
+  };
+})();
+</script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Arcade Frogger 經典街機青蛙過街</title>
@@ -932,7 +964,7 @@
                 this.score = 0;
                 this.highScore = 0;
                 try {
-                    this.highScore = parseInt(sessionStorage.getItem('frogger_high_score') || '0', 10);
+                    this.highScore = parseInt(window.happycatSandboxStorage.getItem('frogger_high_score') || '0', 10);
                 } catch(e) {}
 
                 this.level = 1;
@@ -986,7 +1018,7 @@
                 if (this.score > this.highScore) {
                     this.highScore = this.score;
                     try {
-                        sessionStorage.setItem('frogger_high_score', this.highScore);
+                        window.happycatSandboxStorage.setItem('frogger_high_score', this.highScore);
                     } catch(e) {}
                 }
                 this.updateUI();
